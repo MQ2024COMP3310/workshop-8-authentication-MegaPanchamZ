@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, flash, redirect, url_for
 from flask_login import login_user, login_required, logout_user
 from sqlalchemy import text
 from .models import User
+import hashlib
 from . import db, app
 
 auth = Blueprint('auth', __name__)
@@ -13,7 +14,7 @@ def login():
 @auth.route('/login', methods=['POST'])
 def login_post():
     email = request.form.get('email')
-    password = request.form.get('password')
+    password = hashlib.sha256(request.form.get('password').encode()).hexdigest()
     remember = True if request.form.get('remember') else False
 
     user = User.query.filter_by(email=email).first()
@@ -39,14 +40,16 @@ def signup_post():
     name = request.form.get('name')
     password = request.form.get('password')
 
-    user = db.session.execute(text('select * from user where email = "' + email +'"')).all()
-    if len(user) > 0: # if a user is found, we want to redirect back to signup page so user can try again
-        flash('Email address already exists')  # 'flash' function stores a message accessible in the template code.
-        app.logger.debug("User email already exists")
-        return redirect(url_for('auth.signup'))
+    user = db.session.execute(text("SELECT * FROM user WHERE email = :email"), {'email': email}).fetchone()
 
-    # create a new user with the form data. TODO: Hash the password so the plaintext version isn't saved.
-    new_user = User(email=email, name=name, password=password)
+    # if this returns a user, then the email already exists in database 
+    if user:
+        flash('Email address already exists')
+        app.logger.warning("User signup failed")
+        return redirect(url_for('auth.signup'))
+    
+
+    new_user = User(email=email, name=name, password=hashlib.sha256(password.encode()).hexdigest())
 
     # add the new user to the database
     db.session.add(new_user)
